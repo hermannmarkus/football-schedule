@@ -5,8 +5,11 @@ import requests
 import rich_click as click
 from bs4 import BeautifulSoup
 from bs4.element import Tag
+from rich.console import Console
 
 from .output import output_table
+
+console = Console()
 
 
 def is_gfl_game(tag: Tag) -> bool:
@@ -28,9 +31,20 @@ def filter_marburg_gfl_games(tag: Tag) -> bool:
     return False
 
 
-def gfl_upcoming_games(tag: Tag) -> bool:
+def filter_upcoming_mercenaries_games(tag: Tag) -> bool:
+    """Check if the game is upcoming and from the mercenaries."""
+    is_marburg_game = filter_marburg_gfl_games(tag)
+    is_upcoming = filter_upcoming_games(tag)
+
+    if is_marburg_game is True and is_upcoming is True:
+        return True
+
+    return False
+
+
+def filter_upcoming_games(tag: Tag) -> bool:
     """Check if the game is upcomping"""
-    if not is_gfl_game(tag):
+    if is_gfl_game(tag) is False:
         return False
 
     # If there is a possible second date it is assumed the
@@ -47,7 +61,7 @@ def gfl_upcoming_games(tag: Tag) -> bool:
         return True
 
 
-def gfl_games_today(tag: Tag) -> bool:
+def filter_games_today(tag: Tag) -> bool:
     """Check if the game will take place the same day"""
     if not tag.find("Liga", string="GFL"):
         return False
@@ -76,7 +90,7 @@ def should_schedule_be_refeshed(filename: str) -> bool:
         return True
 
 
-def get_data() -> Tag:
+def get_data(ctx: click.core.Context) -> Tag:
     """
     Fetch and parse the GFL schedule.
 
@@ -88,7 +102,8 @@ def get_data() -> Tag:
     gfl_schedule_url = "http://vereine.football-verband.de/spielplan.xml"  # noqa
 
     if should_schedule_be_refeshed("spielplan.xml"):
-        click.echo("Schedule is old. Downloading again.")
+        if ctx.obj["debug"]:
+            console.log("Schedule is old. Downloading again.")
 
         response = requests.get(gfl_schedule_url)
 
@@ -96,7 +111,8 @@ def get_data() -> Tag:
             with open(schedule_filename, "w") as f:
                 f.write(response.text)
     else:
-        click.echo("Schedule seems fresh. Using local copy.")
+        if ctx.obj["debug"]:
+            console.log("Schedule seems fresh. Using local copy.")
 
     with open(schedule_filename, "r") as file:
         content = file.read()
@@ -115,10 +131,15 @@ def get_data() -> Tag:
     show_default=True,
     help="The output format.",
 )
-def todays_games(format):
+@click.option("--debug/--no-debug", default=False)
+@click.pass_context
+def todays_games(ctx, format, debug):
     """Output every GFL game played today."""
-    data = get_data()
-    upcoming_games = data.find_all(gfl_games_today)
+    ctx.ensure_object(dict)
+    ctx.obj["debug"] = debug
+
+    data = get_data(ctx)
+    upcoming_games = data.find_all(filter_games_today)
 
     if format == "table":
         headers = ["Kickoff", "Heim", "Gast"]
@@ -148,11 +169,66 @@ def todays_games(format):
     show_default=True,
     help="The output format.",
 )
-def upcoming_games(format):
+@click.option("--debug/--no-debug", default=False)
+@click.pass_context
+def upcoming_games(ctx, format, debug):
     """Output every upcoming GFL game."""
-    data = get_data()
+    ctx.ensure_object(dict)
+    ctx.obj["debug"] = debug
 
-    upcoming_games = data.find_all(gfl_upcoming_games)
+    data = get_data(ctx)
+
+    upcoming_games = data.find_all(filter_upcoming_games)
+
+    if format == "table":
+        headers = ["Datum", "Kickoff", "Heim", "Gast", "Gruppe"]
+        rows = list()
+
+        for game in upcoming_games:
+            game_date_str_1 = game.Datum1.string
+            game_date_str_2 = game.Datum2.string
+            game_date_1 = datetime.strptime(game_date_str_1, "%Y-%m-%d")
+
+            game_date = game_date_1.strftime("%d.%m.%Y")
+
+            if game_date_str_2 != "0000-00-00":
+                game_date_2 = datetime.strptime(game_date_str_2, "%Y-%m-%d")
+
+                game_date += " / " + game_date_2.strftime("%d.%m.%Y")
+
+            kickoff = game.Kickoff.string
+
+            rows.append(
+                (
+                    game_date,
+                    f"{kickoff} Uhr",
+                    game.Gast.string,
+                    game.Heim.string,
+                    game.Gruppe.string,
+                )
+            )
+
+        output_table(headers, rows)
+
+
+@click.command()
+@click.option(
+    "--format",
+    "-f",
+    default="table",
+    show_default=True,
+    help="The output format.",
+)
+@click.option("--debug/--no-debug", default=False)
+@click.pass_context
+def upcoming_mercenaries_games(ctx, format, debug):
+    """Output every upcoming GFL game."""
+    ctx.ensure_object(dict)
+    ctx.obj["debug"] = debug
+
+    data = get_data(ctx)
+
+    upcoming_games = data.find_all(filter_upcoming_mercenaries_games)
 
     if format == "table":
         headers = ["Datum", "Kickoff", "Heim", "Gast", "Gruppe"]

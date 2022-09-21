@@ -1,51 +1,22 @@
 from datetime import datetime
 
-import nfl_data_py as nfl
 import pytz
+import requests
 import rich_click as click
 
 from .output import output_table
 
 
-@click.command()
-@click.option(
-    "--format",
-    "-f",
-    default="table",
-    show_default=True,
-    help="The output format.",
-)
-def seattle_games(format):
-    df = nfl.import_schedules([2022])
-
-    seattle_games = df[df["game_id"].str.contains("SEA")]
-
-    gamedays = seattle_games["gameday"]
-    gametime = seattle_games["gametime"]
-    home_teams = seattle_games["home_team"]
-    away_teams = seattle_games["away_team"]
-
-    if format == "table":
-        headers = ["Datum", "Kickoff", "Heim", "Gast"]
-        rows = list()
-
-    for index in home_teams.index:
-        input_str = f"{gamedays[index]} {gametime[index]} -0400"
-        game_date = datetime.strptime(input_str, "%Y-%m-%d %H:%M %z")
-        game_date = game_date.astimezone(pytz.timezone("Europe/Berlin"))
-
-        game_date_str = game_date.strftime("%d.%m.%Y")
-        kickoff = game_date.strftime("%H:%M")
-        rows.append(
-            [
-                game_date_str,
-                f"{kickoff} Uhr",
-                home_teams[index],
-                away_teams[index],
-            ]
+def fetch_seattle_games() -> dict:
+    res = requests.get(
+        (
+            "https://site.web.api.espn.com/apis/site/v2/sports/football/"
+            "nfl/teams/sea/schedule?region=us&lang=en&season=2022&seasontype=2"
         )
+    )
 
-    output_table(headers, rows)
+    if res.status_code == 200:
+        return res.json()
 
 
 @click.command()
@@ -56,36 +27,87 @@ def seattle_games(format):
     show_default=True,
     help="The output format.",
 )
-def upcoming_seattle_games(format):
-    df = nfl.import_schedules([2022])
+@click.pass_context
+def seattle_games(ctx, format):
+    games = fetch_seattle_games()["events"]
 
-    seattle_games = df[df["game_id"].str.contains("SEA")]
-    today = str(datetime.today())
-    upcoming_games = seattle_games[seattle_games["gameday"] > today]
+    rows = list()
 
-    gamedays = upcoming_games["gameday"]
-    gametime = upcoming_games["gametime"]
-    home_teams = upcoming_games["home_team"]
-    away_teams = upcoming_games["away_team"]
-
-    if format == "table":
-        headers = ["Datum", "Kickoff", "Heim", "Gast"]
-        rows = list()
-
-    for index in home_teams.index:
-        date_str = f"{gamedays[index]} {gametime[index]} -0400"
-        game_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M %z")
+    for game in games:
+        input_str = game["date"]
+        game_date = datetime.strptime(input_str, "%Y-%m-%dT%H:%M%z")
         game_date = game_date.astimezone(pytz.timezone("Europe/Berlin"))
 
         game_date_str = game_date.strftime("%d.%m.%Y")
         kickoff = game_date.strftime("%H:%M")
-        rows.append(
-            [
-                game_date_str,
-                f"{kickoff} Uhr",
-                home_teams[index],
-                away_teams[index],
-            ]
-        )
+
+        teams = game["competitions"][0]["competitors"]
+
+        for team in teams:
+            if team["homeAway"] == "home":
+                home_team = team["team"]["displayName"]
+
+            if team["homeAway"] == "away":
+                away_team = team["team"]["displayName"]
+
+        if format == "list":
+            rows.append(
+                {
+                    "date": game_date,
+                    "away_team": away_team,
+                    "home_team": home_team,
+                }
+            )
+
+        if format == "table":
+            rows.append(
+                [
+                    game_date_str,
+                    f"{kickoff} Uhr",
+                    home_team,
+                    away_team,
+                ]
+            )
+
+    if format == "list":
+        return rows
+
+    if format == "table":
+        headers = ["Datum", "Kickoff", "Heim", "Gast"]
+
+        output_table(headers, rows)
+
+
+@click.command()
+@click.option(
+    "--format",
+    "-f",
+    default="table",
+    show_default=True,
+    help="The output format.",
+)
+@click.pass_context
+def upcoming_seattle_games(ctx, format):
+    rows = list()
+    games = ctx.invoke(seattle_games, format="list")
+
+    tz = pytz.timezone("Europe/Berlin")
+    now = datetime.now(tz)
+
+    if format == "table":
+        headers = ["Datum", "Kickoff", "Heim", "Gast"]
+
+    for game in games:
+        if game["date"] > now:
+            date = game["date"].strftime("%d.%m.%Y")
+            kickoff = game["date"].strftime("%H:%M")
+            rows.append(
+                [
+                    date,
+                    f"{kickoff} Uhr",
+                    game["home_team"],
+                    game["away_team"],
+                ]
+            )
 
     output_table(headers, rows)
