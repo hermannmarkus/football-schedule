@@ -215,8 +215,8 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 
 [metadata]
 lock-version = "1.1"
-python-versions = "^3.7.13"
-content-hash = "4d9f0f992171dcbae35a0c03e2efeda7dad085c5720f0c7b00b23b39338f0226"
+python-versions = "^3.7.3"
+content-hash = "f2a27a8944b8877d65d5b0dc2fd9cc2d9aca8587c0b88e73f8c720d49d826ccf"
 
 [metadata.files]
 beautifulsoup4 = [

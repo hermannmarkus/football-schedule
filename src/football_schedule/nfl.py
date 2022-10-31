@@ -7,7 +7,7 @@ import rich_click as click
 
 from .output import output_table
 
-locale.setlocale(locale.LC_TIME, "de_DE")
+locale.setlocale(locale.LC_TIME, "de_DE.utf8")
 
 
 def fetch_seattle_games() -> dict:
