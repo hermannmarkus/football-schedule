@@ -1,5 +1,6 @@
 import locale
 from datetime import datetime
+from typing import Dict
 
 import pytz
 import requests
@@ -7,16 +8,47 @@ import rich_click as click
 
 from .output import output_table
 
-locale.setlocale(locale.LC_TIME, "de_DE.utf8")
+try:
+    locale.setlocale(locale.LC_TIME, "de_DE.uft-8")
+except locale.Error:
+    try:
+        locale.setlocale(locale.LC_TIME, "de_DE")
+    except locale.Error as e:
+        raise e
 
 
-def fetch_seattle_games() -> dict:
-    res = requests.get(
-        (
-            "https://site.web.api.espn.com/apis/site/v2/sports/football/"
-            "nfl/teams/sea/schedule?region=us&lang=en&season=2022&seasontype=2"
-        )
+def get_season_year() -> int:
+    """Return the year for the season with upcoming games
+
+    :returns: The year as an integer
+    """
+    now = datetime.now()
+    current_year = now.year
+
+    if now.month < 3:
+        return current_year - 1
+
+    return current_year
+
+
+def fetch_seattle_games(season_type: str = "reg") -> Dict:
+    """Fetch the games for the given season type
+
+    :param season_type: The season type, either pre, reg or post
+
+    :returns: The response json as dict
+    """
+    season_types = {"pre": 1, "reg": 2, "post": 3}
+    season_type_id = season_types[season_type]
+    season_year = get_season_year()
+
+    url = (
+        "https://site.web.api.espn.com/apis/site/v2/sports/football/"
+        f"nfl/teams/sea/schedule?region=us&lang=en&season={season_year}&"
+        f"seasontype={season_type_id}"
     )
+
+    res = requests.get(url)
 
     if res.status_code == 200:
         return res.json()
@@ -38,7 +70,11 @@ def fetch_seattle_games() -> dict:
 )
 @click.pass_context
 def seattle_games(ctx, format, team_name_format):
-    games = fetch_seattle_games()["events"]
+    pre_season_games = fetch_seattle_games("pre")["events"]
+    regular_season_games = fetch_seattle_games("reg")["events"]
+    post_season_games = fetch_seattle_games("post")["events"]
+
+    games = pre_season_games + regular_season_games + post_season_games
 
     rows = list()
 
@@ -147,6 +183,9 @@ def upcoming_seattle_game_file(ctx, output_file):
         if game["date"] > now:
             game_to_return = game
             break
+    else:
+        # When there's not future game scheduled, return and do nothing
+        return
 
     date = game_to_return["date"].strftime("%A, %d.%m.%Y")
     kickoff = game_to_return["date"].strftime("%H:%M")
