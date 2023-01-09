@@ -9,7 +9,7 @@ import rich_click as click
 from .output import output_table
 
 try:
-    locale.setlocale(locale.LC_TIME, "de_DE.uft-8")
+    locale.setlocale(locale.LC_TIME, "de_DE.UFT-8")
 except locale.Error:
     try:
         locale.setlocale(locale.LC_TIME, "de_DE")
