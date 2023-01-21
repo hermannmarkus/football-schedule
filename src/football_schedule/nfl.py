@@ -6,7 +6,7 @@ import pytz
 import requests
 import rich_click as click
 
-from .output import output_table
+from .output import inkplate_file_content, output_table
 
 try:
     locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
@@ -137,19 +137,33 @@ def seattle_games(ctx, format, team_name_format):
     show_default=True,
     help="The output format.",
 )
+@click.option(
+    "--team-name-format",
+    default="displayName",
+    show_default=True,
+    help="The output format of the team names.",
+)
 @click.pass_context
-def upcoming_seattle_games(ctx, format):
-    rows = list()
-    games = ctx.invoke(seattle_games, format="list")
-
+def upcoming_seattle_games(ctx, format, team_name_format):
     tz = pytz.timezone("Europe/Berlin")
     now = datetime.now(tz)
 
+    games = ctx.invoke(
+        seattle_games,
+        format="list",
+        team_name_format=team_name_format,
+    )
+
+    upcoming_games = [game for game in games if game["date"] > now]
+
+    if format == "list":
+        return upcoming_games
+
     if format == "table":
+        rows = list()
         headers = ["Datum", "Kickoff", "Heim", "Gast"]
 
-    for game in games:
-        if game["date"] > now:
+        for game in upcoming_games:
             date = game["date"].strftime("%d.%m.%Y")
             kickoff = game["date"].strftime("%H:%M")
             rows.append(
@@ -161,7 +175,7 @@ def upcoming_seattle_games(ctx, format):
                 ]
             )
 
-    output_table(headers, rows)
+        output_table(headers, rows)
 
 
 @click.command()
@@ -169,30 +183,20 @@ def upcoming_seattle_games(ctx, format):
 @click.pass_context
 def upcoming_seattle_game_file(ctx, output_file):
     games = ctx.invoke(
-        seattle_games,
+        upcoming_seattle_games,
         format="list",
         team_name_format="abbreviation",
     )
 
-    tz = pytz.timezone("Europe/Berlin")
-    now = datetime.now(tz)
-
     game_to_return = None
 
     for game in games:
-        if game["date"] > now:
-            game_to_return = game
-            break
+        game_to_return = game
+        break
     else:
         # When there's not future game scheduled, return and do nothing
         return
 
-    date = game_to_return["date"].strftime("%A, %d.%m.%Y")
-    kickoff = game_to_return["date"].strftime("%H:%M")
-
-    file_content = game_to_return["home_team"].lower() + "\n"
-    file_content += game_to_return["away_team"].lower() + "\n"
-    file_content += date + "\n"
-    file_content += f"{kickoff} Uhr"
+    file_content = inkplate_file_content(game_to_return, "nfl")
 
     output_file.write(file_content)

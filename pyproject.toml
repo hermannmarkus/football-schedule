@@ -33,6 +33,7 @@ upcoming-mercenaries-games = "football_schedule.gfl:upcoming_mercenaries_games"
 seattle-games = "football_schedule.nfl:seattle_games"
 upcoming-seattle-games = "football_schedule.nfl:upcoming_seattle_games"
 upcoming-seattle-game-file = "football_schedule.nfl:upcoming_seattle_game_file"
+inkplate-data = "football_schedule.inkplate:upcoming_game_file"
 
 [tool.isort]
 profile = "hug"
