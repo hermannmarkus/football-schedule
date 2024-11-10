@@ -1,3 +1,4 @@
+import json
 from typing import Dict, List
 
 from rich.console import Console
@@ -44,3 +45,16 @@ def inkplate_file_content(game: Dict, league: str) -> str:
     )
 
     return file_content
+
+
+def output_json(game) -> str:
+    output = [
+        {
+            "home": game["home_team"].lower(),
+            "away": game["away_team"].lower(),
+            "date": game["date"].strftime("%A, %d.%m.%Y"),
+            "time": game["date"].strftime("%H:%M"),
+        }
+    ]
+
+    return json.dumps(output)

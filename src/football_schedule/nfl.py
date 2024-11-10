@@ -1,4 +1,5 @@
 import locale
+import os
 from datetime import datetime
 from typing import Dict
 
@@ -6,7 +7,7 @@ import pytz
 import requests
 import rich_click as click
 
-from .output import inkplate_file_content, output_table
+from .output import inkplate_file_content, output_json, output_table
 
 try:
     locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
@@ -31,7 +32,7 @@ def get_season_year() -> int:
     return current_year
 
 
-def fetch_seattle_games(season_type: str = "reg") -> Dict:
+def fetch_team_games(team: str, season_type: str = "reg") -> Dict:
     """Fetch the games for the given season type
 
     :param season_type: The season type, either pre, reg or post
@@ -44,7 +45,7 @@ def fetch_seattle_games(season_type: str = "reg") -> Dict:
 
     url = (
         "https://site.web.api.espn.com/apis/site/v2/sports/football/"
-        f"nfl/teams/sea/schedule?region=us&lang=en&season={season_year}&"
+        f"nfl/teams/{team}/schedule?region=us&lang=en&season={season_year}&"
         f"seasontype={season_type_id}"
     )
 
@@ -54,7 +55,18 @@ def fetch_seattle_games(season_type: str = "reg") -> Dict:
         return res.json()
 
 
+def fetch_seattle_games(season_type: str = "reg") -> Dict:
+    """Fetch the games for the given season type
+
+    :param season_type: The season type, either pre, reg or post
+
+    :returns: The response json as dict
+    """
+    return fetch_team_games("sea", season_type)
+
+
 @click.command()
+@click.option("--team", "-t", help="The team name.")
 @click.option(
     "--format",
     "-f",
@@ -69,10 +81,10 @@ def fetch_seattle_games(season_type: str = "reg") -> Dict:
     help="The output format of the team names.",
 )
 @click.pass_context
-def seattle_games(ctx, format, team_name_format):
-    pre_season_games = fetch_seattle_games("pre")["events"]
-    regular_season_games = fetch_seattle_games("reg")["events"]
-    post_season_games = fetch_seattle_games("post")["events"]
+def team_games(ctx, team: str, format, team_name_format):
+    pre_season_games = fetch_team_games(team, "pre")["events"]
+    regular_season_games = fetch_team_games(team, "reg")["events"]
+    post_season_games = fetch_team_games(team, "post")["events"]
 
     games = pre_season_games + regular_season_games + post_season_games
 
@@ -130,6 +142,7 @@ def seattle_games(ctx, format, team_name_format):
 
 
 @click.command()
+@click.option("--team", "-t", help="The team name.")
 @click.option(
     "--format",
     "-f",
@@ -144,12 +157,39 @@ def seattle_games(ctx, format, team_name_format):
     help="The output format of the team names.",
 )
 @click.pass_context
-def upcoming_seattle_games(ctx, format, team_name_format):
+def seattle_games(ctx, format, team_name_format):
+    games = ctx.invoke(
+        team_games,
+        team="sea",
+        format="list",
+        team_name_format=team_name_format,
+    )
+    return games
+
+
+@click.command()
+@click.option("--team", "-t", help="The team name.")
+@click.option(
+    "--format",
+    "-f",
+    default="table",
+    show_default=True,
+    help="The output format.",
+)
+@click.option(
+    "--team-name-format",
+    default="displayName",
+    show_default=True,
+    help="The output format of the team names.",
+)
+@click.pass_context
+def upcoming_team_games(ctx, team, format, team_name_format):
     tz = pytz.timezone("Europe/Berlin")
     now = datetime.now(tz)
 
     games = ctx.invoke(
-        seattle_games,
+        team_games,
+        team=team,
         format="list",
         team_name_format=team_name_format,
     )
@@ -179,9 +219,42 @@ def upcoming_seattle_games(ctx, format, team_name_format):
 
 
 @click.command()
-@click.argument("output_file", type=click.File("w"))
+@click.option(
+    "--format",
+    "-f",
+    default="table",
+    show_default=True,
+    help="The output format.",
+)
+@click.option(
+    "--team-name-format",
+    default="displayName",
+    show_default=True,
+    help="The output format of the team names.",
+)
 @click.pass_context
-def upcoming_seattle_game_file(ctx, output_file):
+def upcoming_seattle_games(ctx, format, team_name_format):
+    games = ctx.invoke(
+        upcoming_team_games,
+        team="sea",
+        format=format,
+        team_name_format="abbreviation",
+    )
+
+    return games
+
+
+@click.command()
+@click.argument("output_file", type=click.File("w"))
+@click.option(
+    "--format",
+    "-f",
+    default="inkplate",
+    show_default=True,
+    help="The output format.",
+)
+@click.pass_context
+def upcoming_seattle_game_file(ctx, output_file, format):
     games = ctx.invoke(
         upcoming_seattle_games,
         format="list",
@@ -197,6 +270,84 @@ def upcoming_seattle_game_file(ctx, output_file):
         # When there's not future game scheduled, return and do nothing
         return
 
-    file_content = inkplate_file_content(game_to_return, "nfl")
+    if format == "json":
+        file_content = output_json(game_to_return)
+    else:
+        file_content = inkplate_file_content(game_to_return, "nfl")
 
     output_file.write(file_content)
+
+
+@click.command()
+@click.pass_context
+@click.argument("output_folder", type=click.Path(exists=True))
+@click.option(
+    "--format",
+    "-f",
+    default="inkplate",
+    show_default=True,
+    help="The output format.",
+)
+def all_upcoming_games(ctx, output_folder, format):
+    teams_names = {
+        "ari": "Arizona Cardinals",
+        "atl": "Atlanta Falcons",
+        "bal": "Baltimore Ravens",
+        "buf": "Buffalo Bills",
+        "car": "Carolina Panthers",
+        "chi": "Chicago Bears",
+        "cin": "Cincinnati Bengals",
+        "cle": "Cleveland Browns",
+        "dal": "Dallas Cowboys",
+        "den": "Denver Broncos",
+        "det": "Detroit Lions",
+        "gb": "Green Bay Packers",
+        "hou": "Houston Texans",
+        "ind": "Indianapolis Colts",
+        "jax": "Jacksonville Jaguars",
+        "kc": "Kansas City Chiefs",
+        "lv": "Las Vegas Raiders",
+        "lac": "Los Angeles Chargers",
+        "lar": "Los Angeles Rams",
+        "mia": "Miami Dolphins",
+        "min": "Minnesota Vikings",
+        "ne": "New England Patriots",
+        "no": "New Orleans Saints",
+        "nyg": "New York Giants",
+        "nyj": "New York Jets",
+        "phi": "Philadelphia Eagles",
+        "pit": "Pittsburgh Steelers",
+        "sea": "Seattle Seahawks",
+        "sf": "San Francico 49ers",
+        "tb": "Tampa Bay Buccaneers",
+        "ten": "Tennessee Titans",
+        "wsh": "Washington Commanders",
+    }
+
+    for team in teams_names.keys():
+
+        games = ctx.invoke(
+            upcoming_team_games,
+            team=team,
+            format="list" if format == "json" else format,
+            team_name_format="abbreviation",
+        )
+
+        game_to_return = None
+
+        for game in games:
+            game_to_return = game
+            break
+        else:
+            # When there's not future game scheduled, return and do nothing
+            return
+
+        if format == "json":
+            file_content = output_json(game_to_return)
+        else:
+            file_content = inkplate_file_content(game_to_return, "nfl")
+
+        file_path = os.path.join(output_folder, f"{team}.json")
+
+        with open(file_path, "w") as output_file:
+            output_file.write(file_content)
