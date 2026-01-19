@@ -325,11 +325,10 @@ def all_upcoming_games(ctx, output_folder, format):
     }
 
     for team in teams_names.keys():
-
         games = ctx.invoke(
             upcoming_team_games,
             team=team,
-            format="list" if format == "json" else format,
+            format="list",
             team_name_format="abbreviation",
         )
 
@@ -339,8 +338,8 @@ def all_upcoming_games(ctx, output_folder, format):
             game_to_return = game
             break
         else:
-            # When there's not future game scheduled, return and do nothing
-            return
+            # When there's no future game scheduled, skip to the next team
+            continue
 
         if format == "json":
             file_content = output_json(game_to_return)
