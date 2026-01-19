@@ -1,6 +1,7 @@
 import locale
 import os
 from datetime import datetime
+from time import sleep
 from typing import Dict
 
 import pytz
@@ -49,7 +50,9 @@ def fetch_team_games(team: str, season_type: str = "reg") -> Dict:
         f"seasontype={season_type_id}"
     )
 
-    res = requests.get(url)
+    res = requests.get(url, timeout=5)
+
+    sleep(10)
 
     if res.status_code == 200:
         return res.json()
